@@ -5,18 +5,9 @@
 #include <ctime>
 #include <unistd.h>
 
-#if defined(__FreeBSD__) || defined(__APPLE__)
 #include <sys/sysctl.h>
 #include <sys/user.h>
-#endif
-
-#ifdef __linux__
-#include <dirent.h>
-#include <errno.h>
-#include <string.h>
 #include <sys/resource.h>
-#include <time.h>
-#endif
 
 #ifdef __APPLE__
 #include <libproc.h>
@@ -70,11 +61,8 @@ namespace Prometheus
         void set_proc_stat();
     public:
         pid_t pid;
-        time_t now;
         int fds_total;
         uintmax_t fds_limit;
-        uintmax_t start_time_seconds;
-        long uptime_seconds;
         int threads_total;
         unsigned long vm_bytes;
         unsigned long rm_bytes;
@@ -97,7 +85,6 @@ namespace Prometheus
             fds_total = get_fds_total();
             set_fds_limit();
             set_rusage();
-            std::time(&now);
 
             set_proc_stat();
         }

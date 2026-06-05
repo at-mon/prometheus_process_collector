@@ -4,18 +4,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#if defined(__FreeBSD__) || defined(__APPLE__)
 #include <sys/sysctl.h>
 #include <sys/user.h>
-#endif
-
-#ifdef __linux__
-#include <dirent.h>
-#include <errno.h>
-#include <string.h>
-#include <sys/resource.h>
-#include <time.h>
-#endif
 
 #ifdef __APPLE__
 #include <libproc.h>
@@ -46,19 +36,6 @@ struct prometheus_process_info
   long involuntary_context_switches_total;
 };
 
-#ifdef __linux__
-
-struct kinfo_proc
-{
-  struct timeval ki_start; /* starting time */
-  int ki_numthreads;       /* XXXKSE number of threads in total */
-  unsigned long ki_size;   /* virtual size */
-  unsigned long ki_rssize; /* resident size in pages */
-  struct rusage ki_rusage; /* process rusage statistics */
-};
-
-#endif
-
-#define PROCESS_INFO_COUNT 18
+#define PROCESS_INFO_COUNT 16
 
 int fill_prometheus_process_info(pid_t pid, struct prometheus_process_info *prometheus_process_info);

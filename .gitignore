@@ -10,6 +10,10 @@ _*
 *.plt
 *.swp
 *.swo
+*.swp
+*~
+**/.DS_Store
+.DS_Store
 .erlang.cookie
 ebin
 log

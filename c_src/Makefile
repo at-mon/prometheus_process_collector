@@ -3,78 +3,79 @@
 CURDIR := $(shell pwd)
 BASEDIR := $(abspath $(CURDIR)/..)
 
-PROJECT ?= $(notdir $(BASEDIR))
-PROJECT := $(strip $(PROJECT))
+PROJECT := prometheus_process_collector
 
-ERTS_INCLUDE_DIR ?= $(shell erl -noshell -s init stop -eval "io:format(\"~s/erts-~s/include/\", [code:root_dir(), erlang:system_info(version)]).")
-ERL_INTERFACE_INCLUDE_DIR ?= $(shell erl -noshell -s init stop -eval "io:format(\"~s\", [code:lib_dir(erl_interface, include)]).")
-ERL_INTERFACE_LIB_DIR ?= $(shell erl -noshell -s init stop -eval "io:format(\"~s\", [code:lib_dir(erl_interface, lib)]).")
+ERTS_INCLUDE_DIR ?= $(shell erl -noshell -eval "io:format(\"~ts/erts-~ts/include/\", [code:root_dir(), erlang:system_info(version)]), erlang:halt().")
+ERL_INTERFACE_INCLUDE_DIR ?= $(shell erl -noshell -eval "io:format(\"~ts\", [code:lib_dir(erl_interface, include)]), erlang:halt().")
+ERL_INTERFACE_LIB_DIR ?= $(shell erl -noshell -eval "io:format(\"~ts\", [code:lib_dir(erl_interface, lib)]), erlang:halt().")
 
 C_SRC_DIR = $(CURDIR)
 C_SRC_OUTPUT ?= $(CURDIR)/../priv/$(PROJECT).so
 MEMTEST_OUTPUT ?= $(CURDIR)/../_build/memory_test
 
-.PHONY: memory-test
+.PHONY: memory-test clean
 
-# System type and C compiler/flags.
+# System type, sources, compiler, and link command.
 
 UNAME_SYS := $(shell uname -s)
-ifeq ($(UNAME_SYS), Darwin)
+ifeq ($(UNAME_SYS), Linux)
+	CC ?= cc
+	CFLAGS += -O3 -finline-functions -std=c11 -Wall -fPIC \
+		  -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR)
+	LDLIBS += -L $(ERL_INTERFACE_LIB_DIR) -lei
+	SOURCES = prometheus_process_collector_nif_linux.c
+	LINKER = $(CC)
+else ifeq ($(UNAME_SYS), Darwin)
 	CXX ?= c++
-	CXXFLAGS += -O3 -finline-functions
-	LDFLAGS += -flat_namespace -undefined suppress
+	CXXFLAGS += -O3 -finline-functions -fPIC -std=c++11 -Wall \
+		    -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR)
+	LDFLAGS += -undefined dynamic_lookup
+	LDLIBS += -L $(ERL_INTERFACE_LIB_DIR) -lei -lstdc++
+	SOURCES = prometheus_process_collector_nif.cc prometheus_process_info_macos.cc
 	PSOURCES = prometheus_process_info_macos.cc
+	LINKER = $(CXX)
 else ifeq ($(UNAME_SYS), FreeBSD)
 	CXX ?= c++
 	CXXEFLAGS += -D__STANDALONE_TEST__ -std=c++11 -Wall
-	CXXFLAGS += -O3 -finline-functions
+	CXXFLAGS += -O3 -finline-functions -fPIC -std=c++11 -Wall \
+		    -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR)
+	LDLIBS += -L $(ERL_INTERFACE_LIB_DIR) -lei -lstdc++
+	SOURCES = prometheus_process_collector_nif.cc prometheus_process_info_freebsd.cc
 	PSOURCES = prometheus_process_info_freebsd.cc
-else ifeq ($(UNAME_SYS), Linux)
-	CXX ?= g++
-	CXXEFLAGS += -D__STANDALONE_TEST__ -std=c++11 -Wall
-	CXXFLAGS += -O3 -finline-functions
-	PSOURCES = prometheus_process_info_linux.cc
-endif
-
-SOURCES = prometheus_process_collector_nif.cc $(PSOURCES)
-
-CXXFLAGS += -fPIC -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR) -std=c++11 -Wall
-LDLIBS += -L $(ERL_INTERFACE_LIB_DIR) -lei
-
-ifeq ($(UNAME_SYS), OpenBSD)
-	LDLIBS += -lestdc++
-else
-	LDLIBS += -lstdc++
+	LINKER = $(CXX)
 endif
 
 LDFLAGS += -shared
 
 # Verbosity.
 
+cc_verbose_0  = @echo " CC    " $(?F);
+cc_verbose    = $(cc_verbose_$(V))
 cpp_verbose_0 = @echo " CPP   " $(?F);
-cpp_verbose = $(cpp_verbose_$(V))
-
+cpp_verbose   = $(cpp_verbose_$(V))
 link_verbose_0 = @echo " LD    " $(@F);
-link_verbose = $(link_verbose_$(V))
+link_verbose   = $(link_verbose_$(V))
 
 OBJECTS = $(addsuffix .o, $(basename $(SOURCES)))
 
-COMPILE_CPP = $(cpp_verbose) $(CXX) $(CXXFLAGS) $(CPPFLAGS) -c
-
 $(C_SRC_OUTPUT): $(OBJECTS)
 	@mkdir -p $(BASEDIR)/priv/
-	$(link_verbose) $(CC) $(OBJECTS) $(LDFLAGS) $(LDLIBS) -o $(C_SRC_OUTPUT)
+	$(link_verbose) $(LINKER) $(OBJECTS) $(LDFLAGS) $(LDLIBS) -o $(C_SRC_OUTPUT)
+
+%.o: %.c
+	$(cc_verbose) $(CC) $(CFLAGS) $(CPPFLAGS) -c $(OUTPUT_OPTION) $<
 
 %.o: %.cc
-	$(COMPILE_CPP) $(OUTPUT_OPTION) $<
-
-%.o: %.cpp
-	$(COMPILE_CPP) $(OUTPUT_OPTION) $<
+	$(cpp_verbose) $(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $(OUTPUT_OPTION) $<
 
 memory-test:
+ifeq ($(UNAME_SYS), Linux)
+	@echo "memory-test target is not applicable on Linux (no C++ NIF code on this platform)"
+else
 	@mkdir -p $(BASEDIR)/_build/
 	$(CXX) $(CXXEFLAGS) $(LDLIBS) prometheus_process_info_mt.cc $(PSOURCES) -o $(MEMTEST_OUTPUT)
 	valgrind --leak-check=full --error-exitcode=1 $(MEMTEST_OUTPUT) 2
+endif
 
 clean:
 	@rm -f $(C_SRC_OUTPUT) $(OBJECTS)

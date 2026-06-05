@@ -126,8 +126,6 @@ namespace Prometheus
     {
         auto proc = kinfo_getproc(pid);
 
-        start_time_seconds = proc->ki_start.tv_sec;
-        uptime_seconds = now - proc->ki_start.tv_sec;
         threads_total = proc->ki_numthreads;
         vm_bytes = proc->ki_size;
         rm_bytes = proc->ki_rssize * pagesize();
