@@ -1,5 +1,6 @@
 #include "prometheus_process_info.h"
 #include <cstdio>
+#include <memory>
 
 namespace Prometheus
 {
